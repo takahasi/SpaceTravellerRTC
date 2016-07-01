@@ -134,7 +134,7 @@ class task : public virtual coil::Task
     virtual int svc();
 
     void setPosition(double *p);
-    double *getPosition(void);
+    void getPosition(double *p);
     void enableExecute(void);
     void disableExecute(void);
     int isEnableExecute(void);

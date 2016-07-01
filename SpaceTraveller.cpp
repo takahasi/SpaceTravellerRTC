@@ -12,16 +12,21 @@
 #include <sys/stat.h>
 #include <linux/joystick.h>
 
-#define INPUT_DEVICE "/dev/input/js0"
-#define THRESHOLD_H (15000)
-#define THRESHOLD_L (-15000)
+/* configurations for input device */
+#define INPUT_DEVICE    "/dev/input/js0"
+#define INPUT_AXIS_NUM  (6)
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
+/* configurations for debug */
 //#define ENABLE_INFO
 #define ENABLE_DEBUG
 #define ENABLE_TRACE
 
+#define PRINT_THRESHOLD_H (15000)
+#define PRINT_THRESHOLD_L (-15000)
+
+/* debug macros */
 #define _ERROR(fmt, ...) printf("[E]%s():"fmt, __func__, ## __VA_ARGS__)
 #ifdef ENABLE_INFO
 #define _INFO(fmt, ...) printf("[I]%s():"fmt, __func__, ## __VA_ARGS__)
@@ -121,11 +126,11 @@ RTC::ReturnCode_t SpaceTraveller::onActivated(RTC::UniqueId ec_id)
 {
     _TRACE("call %s\n", __FUNCTION__);
 
-    m_out.data.length(6);
+    m_out.data.length(INPUT_AXIS_NUM);
 
     m_task = new task();
 
-    double p[6] = {0, 0, 0, 0, 0, 0};
+    double p[INPUT_AXIS_NUM] = {0};
     m_task->setPosition(p);
     m_task->enableExecute();
     m_task->activate();
@@ -146,147 +151,26 @@ RTC::ReturnCode_t SpaceTraveller::onDeactivated(RTC::UniqueId ec_id)
     return RTC::RTC_OK;
 }
 
-/* Avoids coflict name 'open' in coil::Task class */
-static int WrapperOpen(const char *pathname, int flags)
-{
-    return open(pathname, flags);
-}
-
-int task::svc()
-{
-    struct js_event event;
-    struct timeval tv;
-    fd_set fds;
-    int fd = -1;
-
-    _TRACE("input thread start\n");
-
-    /* try to open target input device */
-    while (isEnableExecute() == 1) {
-        /* open as input device */
-        fd = WrapperOpen(INPUT_DEVICE, O_RDONLY);
-        if (fd != -1) {
-            break;
-        }
-        _ERROR("device open error! retry after 5 seconds\n");
-        sleep(5);
-    }
-
-    while (isEnableExecute() == 1) {
-        FD_ZERO(&fds);
-        FD_SET(fd, &fds);
-        tv.tv_sec = 1;
-        tv.tv_usec = 0;
-        if (select((fd + 1), &fds, NULL, NULL, &tv) < 0) {
-            /* select errors */
-            _ERROR("select fd error!");
-            continue;
-        }
-        if (!FD_ISSET(fd, &fds)) {
-            /* select timeout or caught unknown signals */
-            _INFO("select timeout\n");
-            continue;
-        }
-        /* read input js evant data from devfs */
-        ssize_t len = sizeof(struct js_event);
-        if (read(fd, &event, len) >= len) {
-            if ((event.type & (~JS_EVENT_INIT)) == JS_EVENT_AXIS) {
-                int update = 0;
-
-                switch (event.number) {
-                case 0: /* Pan L/R */
-                case 1: /* Zoom */
-                case 2: /* Pan U/D */
-                case 3: /* Tilt */
-                case 4: /* Roll */
-                case 5: /* Spin */
-                    update = 1;
-                    break;
-                default:
-                    _ERROR("Unknown axis! : %d\n", event.number);
-                    break;
-                }
-
-                if (update == 1) {
-                    m_pos[event.number] = event.value;
-
-                    const char *move_type[6][2] = {
-                            {"Pan  Right"   ,   "Pan Left"  },
-                            {"Zoom Left"    ,   "Zoom Right"},
-                            {"Pan  Down"    ,   "Pan  Up"   },
-                            {"Tilt Down"    ,   "Tilt Up"   },
-                            {"Roll Left"    ,   "Roll Right"},
-                            {"Spin Left"    ,   "Spin Right"}
-                    };
-                    if (event.value >= THRESHOLD_H) {
-                        _DEBUG("%s\n", move_type[event.number][0]);
-                    }
-                    else if (event.value <= THRESHOLD_L) {
-                        _DEBUG("%s\n", move_type[event.number][1]);
-                    }
-                    /* for debug print */
-                    for (unsigned int i = 0; i < ARRAY_SIZE(m_pos); i++) {
-                        _INFO("%f, ", m_pos[i]);
-                    }
-                    _INFO("\n");
-                }
-            }
-        }
-    }
-    close(fd);
-    _TRACE("input thread finish\n");
-    return 0;
-}
-
-void task::setPosition(double *p)
-{
-    memcpy(m_pos, p, sizeof(double) * 6);
-}
-
-double* task::getPosition(void)
-{
-    return m_pos;
-}
-
-void task::enableExecute(void)
-{
-    m_alive = 1;
-}
-
-void task::disableExecute(void)
-{
-    m_alive = 0;
-}
-
-int task::isEnableExecute(void)
-{
-    return m_alive;
-}
 
 RTC::ReturnCode_t SpaceTraveller::onExecute(RTC::UniqueId ec_id)
 {
     if (m_task) {
         if (m_task->isEnableExecute()) {
-            /* "task alive" */
-            memcpy(&(m_out.data[0]), m_task->getPosition(), sizeof(double) * m_out.data.length());
-        }
-        else {
-            /* "task not alive" */
-            memset(&(m_out.data[0]), 0, sizeof(double) * m_out.data.length());
-        }
-    }
-    else {
-        /* "task not exist" */
-        memset(&(m_out.data[0]), 0, sizeof(double) * m_out.data.length());
-    }
+            double p[INPUT_AXIS_NUM];
 
-    /* for debug print */
-    for (unsigned int i = 0; i < m_out.data.length(); i++) {
-        _INFO("%f, ", m_out.data[i]);
-    }
-    _INFO("\n");
+            m_task->getPosition(p);
+            (void)memcpy(&(m_out.data[0]), p, sizeof(p));
 
-    m_outOut.write();
+            /* for debug print */
+            for (unsigned int i = 0; i < m_out.data.length(); i++) {
+                _INFO("%f, ", m_out.data[i]);
+            }
+            _INFO("\n");
+
+            /* send data if input thread alive */
+            m_outOut.write();
+        }
+    }
 
     return RTC::RTC_OK;
 }
@@ -322,6 +206,136 @@ RTC::ReturnCode_t SpaceTraveller::onRateChanged(RTC::UniqueId ec_id)
 }
 */
 
+/* Avoids coflict name 'open' in coil::Task class */
+static int WrapperOpen(const char *pathname, int flags)
+{
+    return open(pathname, flags);
+}
+
+int task::svc()
+{
+    struct js_event event;
+    struct timeval tv;
+    fd_set fds;
+    int fd = -1;
+
+    _TRACE("input thread start\n");
+
+    /* try to open target input device */
+    while (isEnableExecute() == 1) {
+        /* open as input device */
+        fd = WrapperOpen(INPUT_DEVICE, O_RDONLY);
+        if (fd != -1) {
+            break;
+        }
+        _ERROR("device open error! retry after 5 seconds\n");
+        sleep(5);
+    }
+
+    /* read data from device until disable "execute" */
+    while (isEnableExecute() == 1) {
+        FD_ZERO(&fds);
+        FD_SET(fd, &fds);
+        tv.tv_sec = 1;
+        tv.tv_usec = 0;
+        if (select((fd + 1), &fds, NULL, NULL, &tv) < 0) {
+            /* select errors */
+            _ERROR("select fd error! retry slect\n");
+            continue;
+        }
+        if (!FD_ISSET(fd, &fds)) {
+            /* select timeout or caught unknown signals */
+            _INFO("select timeout\n");
+            continue;
+        }
+        /* read input js evant data from devfs */
+        ssize_t len = sizeof(struct js_event);
+        if (read(fd, &event, len) >= len) {
+            if ((event.type & (~JS_EVENT_INIT)) == JS_EVENT_AXIS) {
+                int update = 0;
+
+                switch (event.number) {
+                    case 0: /* Pan L/R */
+                    case 1: /* Zoom */
+                    case 2: /* Pan U/D */
+                    case 3: /* Tilt */
+                    case 4: /* Roll */
+                    case 5: /* Spin */
+                        update = 1;
+                        break;
+                    default:
+                        _ERROR("Unknown axis! : %d\n", event.number);
+                        break;
+                }
+
+                if (update == 1) {
+                    m_pos[event.number] = event.value;
+
+                    const char *move_type[INPUT_AXIS_NUM][2] = {
+                            {"Pan  Right"   ,   "Pan Left"  },
+                            {"Zoom Left"    ,   "Zoom Right"},
+                            {"Pan  Down"    ,   "Pan  Up"   },
+                            {"Tilt Down"    ,   "Tilt Up"   },
+                            {"Roll Left"    ,   "Roll Right"},
+                            {"Spin Left"    ,   "Spin Right"}
+                    };
+                    if (event.value >= PRINT_THRESHOLD_H) {
+                        _DEBUG("%s\n", move_type[event.number][0]);
+                    }
+                    else if (event.value <= PRINT_THRESHOLD_L) {
+                        _DEBUG("%s\n", move_type[event.number][1]);
+                    }
+                    /* for debug print */
+                    for (unsigned int i = 0; i < ARRAY_SIZE(m_pos); i++) {
+                        _INFO("%f, ", m_pos[i]);
+                    }
+                    _INFO("\n");
+                }
+            }
+        }
+    }
+    close(fd);
+    _TRACE("input thread finish\n");
+    return 0;
+}
+
+void task::setPosition(double *p)
+{
+    if (p) {
+        /* TODO: need lock */
+        (void)memcpy(m_pos, p, sizeof(double) * INPUT_AXIS_NUM);
+        /* TODO: need unlock */
+    }
+}
+
+void task::getPosition(double *p)
+{
+    if (p) {
+        /* TODO: need lock */
+        (void)memcpy(p, m_pos, sizeof(double) * INPUT_AXIS_NUM);
+        /* TODO: need unlock */
+    }
+}
+
+void task::enableExecute(void)
+{
+    /* TODO: need lock */
+    m_alive = 1;
+    /* TODO: need unlock */
+}
+
+void task::disableExecute(void)
+{
+    /* TODO: need lock */
+    m_alive = 0;
+    /* TODO: need unlock */
+}
+
+int task::isEnableExecute(void)
+{
+    /* no need to exclusive lock */
+    return m_alive;
+}
 
 extern "C"
 {
