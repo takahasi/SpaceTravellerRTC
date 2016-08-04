@@ -90,7 +90,12 @@ class SpaceTraveller  : public RTC::DataFlowComponentBase
  protected:
   // Configuration variable declaration
   // <rtc-template block="config_declare">
-  
+  /*!
+   *
+   * - Name:  axis_num
+   * - DefaultValue: 6
+   */
+  int m_axis_num;
   // </rtc-template>
 
   // DataInPort declaration
@@ -127,7 +132,7 @@ class SpaceTraveller  : public RTC::DataFlowComponentBase
 class task : public virtual coil::Task
 {
  private:
-    double m_pos[6];    /* position data of 6-axis */
+    double *m_pos;    /* position data of axis */
     int m_alive;        /* executes flag for input thread */
  public:
     task() { m_alive = 0; };

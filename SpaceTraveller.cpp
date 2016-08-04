@@ -13,8 +13,8 @@
 #include <linux/joystick.h>
 
 /* configurations for input device */
-#define INPUT_DEVICE    "/dev/input/js0"
 #define INPUT_AXIS_NUM  (6)
+#define INPUT_DEVICE    "/dev/input/js0"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
@@ -60,6 +60,9 @@ static const char* spacetraveller_spec[] =
     "language",          "C++",
     "lang_type",         "compile",
     // Configuration variables
+    "conf.default.axis_num", "6",
+    // Widget
+    "conf.__widget__.axis_num", "text",
     ""
   };
 // </rtc-template>
@@ -96,6 +99,7 @@ RTC::ReturnCode_t SpaceTraveller::onInitialize()
 
   // <rtc-template block="bind_config">
   // Bind variables and configuration variable
+  bindParameter("axis_num", m_axis_num, "6");
 
   // </rtc-template>
 
@@ -126,7 +130,7 @@ RTC::ReturnCode_t SpaceTraveller::onActivated(RTC::UniqueId ec_id)
 {
     _TRACE("call %s\n", __FUNCTION__);
 
-    m_out.data.length(INPUT_AXIS_NUM);
+    m_out.data.length(m_axis_num);
 
     m_task = new task();
 
@@ -221,6 +225,8 @@ int task::svc()
 
     _TRACE("input thread start\n");
 
+    m_pos = new double[INPUT_AXIS_NUM];
+
     /* try to open target input device */
     while (isEnableExecute() == 1) {
         /* open as input device */
@@ -294,6 +300,7 @@ int task::svc()
             }
         }
     }
+    delete[] m_pos;
     close(fd);
     _TRACE("input thread finish\n");
     return 0;
