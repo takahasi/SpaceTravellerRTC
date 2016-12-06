@@ -130,7 +130,7 @@ RTC::ReturnCode_t SpaceTraveller::onActivated(RTC::UniqueId ec_id)
 {
     _TRACE("call %s\n", __FUNCTION__);
 
-    m_out.data.length(m_axis_num);
+    m_out.data.length(INPUT_AXIS_NUM);
 
     m_task = new task();
 
@@ -225,7 +225,7 @@ int task::svc()
 
     _TRACE("input thread start\n");
 
-    m_pos = new double[INPUT_AXIS_NUM];
+    //m_pos = new double[INPUT_AXIS_NUM];
 
     /* try to open target input device */
     while (isEnableExecute() == 1) {
@@ -300,7 +300,7 @@ int task::svc()
             }
         }
     }
-    delete[] m_pos;
+   // delete[] m_pos;
     close(fd);
     _TRACE("input thread finish\n");
     return 0;

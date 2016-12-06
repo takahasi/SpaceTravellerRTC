@@ -132,7 +132,7 @@ class SpaceTraveller  : public RTC::DataFlowComponentBase
 class task : public virtual coil::Task
 {
  private:
-    double *m_pos;    /* position data of axis */
+    double m_pos[6];    /* position data of axis */
     int m_alive;        /* executes flag for input thread */
  public:
     task() { m_alive = 0; };
